@@ -46,5 +46,12 @@ jobs:
         with:
           go-version: "1.25.12"
           check-latest: true
-      - run: go install github.com/zricethezav/gitleaks/v8@v8.30.0
-      - run: gitleaks detect --source . --no-git --redact
+      - name: Install Gitleaks
+        env:
+          GITLEAKS_VERSION: 8.30.0
+        run: |
+          mkdir -p "$RUNNER_TEMP/gitleaks"
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" -o "$RUNNER_TEMP/gitleaks.tar.gz"
+          tar -xzf "$RUNNER_TEMP/gitleaks.tar.gz" -C "$RUNNER_TEMP/gitleaks"
+          echo "$RUNNER_TEMP/gitleaks" >> "$GITHUB_PATH"
+      - run: gitleaks dir . --redact
