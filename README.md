@@ -18,6 +18,7 @@ Wildcards are intentionally not expanded. Enumerating all accessible vaults or i
 
 ## Prerequisites
 
+- [Docker Engine (CE) 29.2.0 or later](https://docs.docker.com/reference/cli/docker/pass/#installation). Docker Secrets Engine's standalone packages require this minimum Engine version.
 - Docker Secrets Engine installed and running for the user who will run this plugin.
 - A 1Password Connect server and a Connect API token scoped only to the vaults this plugin needs.
 - Access to those vaults; 1Password Connect cannot access built-in Personal, Private, Employee, or default Shared vaults.
@@ -36,7 +37,7 @@ systemctl --user enable --now docker-secrets-engine.service
 Download the `.deb` matching a published release and your architecture (`amd64` or `arm64`), then install it with APT:
 
 ```sh
-VERSION=0.1.0
+VERSION=0.1.1
 ARCH="$(dpkg --print-architecture)"
 curl -fLO "https://github.com/alikhil/docker-secrets-1password/releases/download/v${VERSION}/docker-secrets-1password_${VERSION}_${ARCH}.deb"
 sudo apt install "./docker-secrets-1password_${VERSION}_${ARCH}.deb"
@@ -48,9 +49,74 @@ The package installs `docker-secrets-1password` in `/usr/bin`. Releases also inc
 go install github.com/alikhil/docker-secrets-1password/cmd/docker-secrets-1password@latest
 ```
 
-## Configure and run
+## Run as a system service
 
-The official Connect SDK reads these variables:
+The provider must run for the same Linux user that runs Docker Secrets Engine. The recommended setup is a system service which decrypts the Connect token, then runs the provider as that user. This avoids a plaintext token in a user environment file while allowing the user-scoped Secrets Engine to register the plugin.
+
+The steps below assume:
+
+- Docker Secrets Engine is used by `alice` (replace it with your user name).
+- 1Password Connect listens on `http://127.0.0.1:18080`. Use the internal Connect URL appropriate to your host; do not unnecessarily route a host-side provider through a public proxy.
+- The Debian package was installed, so the provider binary is `/usr/bin/docker-secrets-1password`. For a tarball installation, use that binary's absolute path instead.
+
+Enable the user service and lingering so Docker Secrets Engine survives logout and reboots:
+
+```sh
+systemctl --user enable --now docker-secrets-engine.service
+sudo loginctl enable-linger alice
+```
+
+Create an encrypted systemd credential. The command prompts for the Connect API token without placing it in a shell variable or on the command line:
+
+```sh
+sudo install -d -m 0700 /etc/docker-secrets-1password
+systemd-ask-password "1Password Connect API token" \
+  | sudo systemd-creds encrypt --name=op-connect-token - \
+    /etc/docker-secrets-1password/op-connect-token.cred
+sudo chmod 0600 /etc/docker-secrets-1password/op-connect-token.cred
+```
+
+Create `/etc/systemd/system/docker-secrets-1password.service`. Replace `alice`, `/home/alice`, and `1000` with the intended user's name, home directory, and numeric UID (`id -u alice`).
+
+```ini
+[Unit]
+Description=1Password Connect provider for Docker Secrets Engine
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=alice
+Group=alice
+Environment=HOME=/home/alice
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+Environment=OP_CONNECT_HOST=http://127.0.0.1:18080
+LoadCredentialEncrypted=op-connect-token:/etc/docker-secrets-1password/op-connect-token.cred
+ExecStart=/bin/sh -ec 'export OP_CONNECT_TOKEN="$(cat "$CREDENTIALS_DIRECTORY/op-connect-token")"; exec /usr/bin/docker-secrets-1password'
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Enable it and verify registration without displaying the token:
+
+```sh
+sudo systemctl daemon-reload
+sudo systemctl enable --now docker-secrets-1password.service
+systemctl --user is-active docker-secrets-engine.service
+sudo systemctl is-active docker-secrets-1password.service
+docker pass plugins ls
+```
+
+The plugin list should show `docker-secrets-1password`, version `v…`, realm `op/**`, and status `running`. For diagnostics, inspect `sudo journalctl -u docker-secrets-1password.service` but do not use commands that print the service environment or decrypted credential.
+
+`LoadCredentialEncrypted=` needs a system service: a user manager commonly cannot access the host credential key needed to decrypt a credential created for the system. The credential is decrypted into systemd's per-service credential directory; it is not stored in the unit or passed as a command-line argument.
+
+### Development-only foreground run
+
+For a temporary local test only, the official Connect SDK reads these variables:
 
 ```sh
 export OP_CONNECT_HOST="https://connect.example.internal"
@@ -63,7 +129,7 @@ Start the provider in the same user session as Docker Secrets Engine:
 docker-secrets-1password
 ```
 
-For a persistent user service, put the two variables in a user-readable environment file and reference that file from a systemd user unit. Keep the token file owned by the service user and mode `0600`; do not commit it or place it in Compose files.
+Do not use this approach for a persistent host service: shell history and process environments are too easy to expose. Use the encrypted-credential system service above instead.
 
 The provider registers with the Secrets Engine when it starts and exits when Docker shuts it down. Its release version is logged at startup.
 
