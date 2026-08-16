@@ -1,3 +1,9 @@
-# Changelog
+## 0.1.0 (2026-08-16)
 
-All notable changes are documented here. Releases are generated from Conventional Commits with Commitizen.
+### Feat
+
+- add 1Password Connect secrets provider
+
+### Fix
+
+- scan complete working tree in CI
