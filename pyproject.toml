@@ -1,0 +1,17 @@
+[project]
+name = "docker-secrets-1password"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = [
+  "commitizen>=4.0,<5.0",
+]
+
+[tool.commitizen]
+name = "cz_conventional_commits"
+tag_format = "v$version"
+version_provider = "pep621"
+version_files = [
+  "cmd/docker-secrets-1password/main.go:version = \\\"",
+]
+update_changelog_on_bump = true
+major_version_zero = true

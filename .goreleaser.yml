@@ -1,0 +1,51 @@
+version: 2
+
+project_name: docker-secrets-1password
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: docker-secrets-1password
+    main: ./cmd/docker-secrets-1password
+    binary: docker-secrets-1password
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+
+archives:
+  - id: default
+    formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - README.md
+      - LICENSE
+
+nfpms:
+  - id: debian
+    package_name: docker-secrets-1password
+    vendor: alikhil
+    homepage: https://github.com/alikhil/docker-secrets-1password
+    maintainer: alikhil
+    description: Docker Secrets Engine provider for 1Password Connect
+    license: Apache-2.0
+    formats: [deb]
+    bindir: /usr/bin
+    file_name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Arch }}"
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
+      - "^build:"
+      - "^chore:"
