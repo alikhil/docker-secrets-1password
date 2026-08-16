@@ -43,7 +43,7 @@ curl -fLO "https://github.com/alikhil/docker-secrets-1password/releases/download
 sudo apt install "./docker-secrets-1password_${VERSION}_${ARCH}.deb"
 ```
 
-The package installs `docker-secrets-1password` in `/usr/bin`. Releases also include tarballs for Linux and macOS. To build from source instead, install Go 1.25.12 or later and run:
+The package installs `docker-secrets-1password` in `/usr/bin`. Releases also include tarballs for Linux and macOS. To build from source instead, install Go 1.25.13 or later and run:
 
 ```sh
 go install github.com/alikhil/docker-secrets-1password/cmd/docker-secrets-1password@latest

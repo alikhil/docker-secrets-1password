@@ -1,6 +1,6 @@
 module github.com/alikhil/docker-secrets-1password
 
-go 1.25.12
+go 1.25.13
 
 require (
 	github.com/1Password/connect-sdk-go v1.5.3
