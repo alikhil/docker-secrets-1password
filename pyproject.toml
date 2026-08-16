@@ -11,7 +11,7 @@ name = "cz_conventional_commits"
 tag_format = "v$version"
 version_provider = "pep621"
 version_files = [
-  "cmd/docker-secrets-1password/main.go:version = \\\"",
+  "cmd/docker-secrets-1password/main.go:version = \\\"v",
 ]
 update_changelog_on_bump = true
 major_version_zero = true
