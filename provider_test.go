@@ -3,6 +3,8 @@ package onepassword
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -21,6 +23,110 @@ type fakeClient struct {
 func (c *fakeClient) GetItem(query, vault string) (*onepassword.Item, error) {
 	c.query, c.vault = query, vault
 	return c.item, c.err
+}
+
+func TestConnectConfigurationUsesExplicitTokenFile(t *testing.T) {
+	clearConnectEnvironment(t)
+	t.Setenv(connectHostEnvironment, " https://connect.example.test ")
+	t.Setenv(connectTokenEnvironment, "environment-token")
+
+	credentialDirectory := t.TempDir()
+	if err := os.WriteFile(filepath.Join(credentialDirectory, connectTokenCredential), []byte("systemd-token"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(credentialsDirectoryEnvironment, credentialDirectory)
+
+	tokenFile := filepath.Join(t.TempDir(), "connect-token")
+	if err := os.WriteFile(tokenFile, []byte(" file-token\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(connectTokenFileEnvironment, tokenFile)
+
+	host, token, err := connectConfigurationFromEnvironment()
+	if err != nil {
+		t.Fatalf("connectConfigurationFromEnvironment() error = %v", err)
+	}
+	if got, want := host, "https://connect.example.test"; got != want {
+		t.Errorf("host = %q, want %q", got, want)
+	}
+	if got, want := token, "file-token"; got != want {
+		t.Errorf("token = %q, want %q", got, want)
+	}
+}
+
+func TestConnectConfigurationUsesSystemdCredentialByDefault(t *testing.T) {
+	clearConnectEnvironment(t)
+	t.Setenv(connectHostEnvironment, "https://connect.example.test")
+	t.Setenv(connectTokenEnvironment, "environment-token")
+
+	credentialDirectory := t.TempDir()
+	if err := os.WriteFile(filepath.Join(credentialDirectory, connectTokenCredential), []byte("systemd-token\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(credentialsDirectoryEnvironment, credentialDirectory)
+
+	_, token, err := connectConfigurationFromEnvironment()
+	if err != nil {
+		t.Fatalf("connectConfigurationFromEnvironment() error = %v", err)
+	}
+	if got, want := token, "systemd-token"; got != want {
+		t.Errorf("token = %q, want %q", got, want)
+	}
+}
+
+func TestConnectConfigurationFallsBackToTokenEnvironment(t *testing.T) {
+	clearConnectEnvironment(t)
+	t.Setenv(connectHostEnvironment, "https://connect.example.test")
+	t.Setenv(connectTokenEnvironment, "environment-token")
+
+	_, token, err := connectConfigurationFromEnvironment()
+	if err != nil {
+		t.Fatalf("connectConfigurationFromEnvironment() error = %v", err)
+	}
+	if got, want := token, "environment-token"; got != want {
+		t.Errorf("token = %q, want %q", got, want)
+	}
+}
+
+func TestConnectConfigurationRejectsMissingToken(t *testing.T) {
+	clearConnectEnvironment(t)
+	t.Setenv(connectHostEnvironment, "https://connect.example.test")
+
+	_, _, err := connectConfigurationFromEnvironment()
+	if err == nil || !strings.Contains(err.Error(), connectTokenCredential) {
+		t.Fatalf("connectConfigurationFromEnvironment() error = %v, want missing token error", err)
+	}
+}
+
+func TestConnectConfigurationRejectsEmptyTokenFile(t *testing.T) {
+	clearConnectEnvironment(t)
+	t.Setenv(connectHostEnvironment, "https://connect.example.test")
+
+	tokenFile := filepath.Join(t.TempDir(), "connect-token")
+	if err := os.WriteFile(tokenFile, []byte(" \n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(connectTokenFileEnvironment, tokenFile)
+
+	_, _, err := connectConfigurationFromEnvironment()
+	if err == nil || !strings.Contains(err.Error(), "is empty") {
+		t.Fatalf("connectConfigurationFromEnvironment() error = %v, want empty token file error", err)
+	}
+}
+
+func clearConnectEnvironment(t *testing.T) {
+	t.Helper()
+	for _, name := range []string{
+		connectHostEnvironment,
+		connectTokenEnvironment,
+		connectTokenFileEnvironment,
+		credentialsDirectoryEnvironment,
+	} {
+		t.Setenv(name, "")
+		if err := os.Unsetenv(name); err != nil {
+			t.Fatalf("unset %s: %v", name, err)
+		}
+	}
 }
 
 func TestGetSecretsUsesExplicitField(t *testing.T) {

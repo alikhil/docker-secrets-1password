@@ -5,6 +5,8 @@ package onepassword
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -13,7 +15,15 @@ import (
 	"github.com/docker/secrets-engine/plugin"
 )
 
-const Realm = "op"
+const (
+	Realm = "op"
+
+	connectHostEnvironment          = "OP_CONNECT_HOST"
+	connectTokenEnvironment         = "OP_CONNECT_TOKEN"
+	connectTokenFileEnvironment     = "OP_CONNECT_TOKEN_FILE"
+	credentialsDirectoryEnvironment = "CREDENTIALS_DIRECTORY"
+	connectTokenCredential          = "op-connect-token"
+)
 
 // Client is the subset of the Connect client used by this provider.
 // It deliberately makes tests independent of a live Connect server.
@@ -35,14 +45,74 @@ func New(client Client) *Provider {
 	return &Provider{client: client}
 }
 
-// NewFromEnvironment creates a provider using OP_CONNECT_HOST and
-// OP_CONNECT_TOKEN, as defined by the 1Password Connect SDK.
+// NewFromEnvironment creates a provider using OP_CONNECT_HOST. It reads the
+// token from OP_CONNECT_TOKEN_FILE when set, otherwise from the systemd
+// op-connect-token credential, and finally from OP_CONNECT_TOKEN for backward
+// compatibility with foreground use.
 func NewFromEnvironment() (*Provider, error) {
-	client, err := connect.NewClientFromEnvironment()
+	host, token, err := connectConfigurationFromEnvironment()
 	if err != nil {
-		return nil, fmt.Errorf("create 1Password Connect client: %w", err)
+		return nil, err
 	}
-	return New(client), nil
+	return New(connect.NewClient(host, token)), nil
+}
+
+func connectConfigurationFromEnvironment() (host, token string, err error) {
+	host = strings.TrimSpace(os.Getenv(connectHostEnvironment))
+	if host == "" {
+		return "", "", fmt.Errorf("%s is not set", connectHostEnvironment)
+	}
+
+	token, err = connectTokenFromEnvironment()
+	if err != nil {
+		return "", "", err
+	}
+	return host, token, nil
+}
+
+func connectTokenFromEnvironment() (string, error) {
+	if tokenFile, ok := os.LookupEnv(connectTokenFileEnvironment); ok {
+		tokenFile = strings.TrimSpace(tokenFile)
+		if tokenFile == "" {
+			return "", fmt.Errorf("%s is empty", connectTokenFileEnvironment)
+		}
+		return readConnectToken(tokenFile)
+	}
+
+	if credentialsDirectory, ok := os.LookupEnv(credentialsDirectoryEnvironment); ok {
+		credentialsDirectory = strings.TrimSpace(credentialsDirectory)
+		if credentialsDirectory == "" {
+			return "", fmt.Errorf("%s is empty", credentialsDirectoryEnvironment)
+		}
+		return readConnectToken(filepath.Join(credentialsDirectory, connectTokenCredential))
+	}
+
+	if token, ok := os.LookupEnv(connectTokenEnvironment); ok {
+		token = strings.TrimSpace(token)
+		if token == "" {
+			return "", fmt.Errorf("%s is empty", connectTokenEnvironment)
+		}
+		return token, nil
+	}
+
+	return "", fmt.Errorf(
+		"connect token is not configured; provide the %q systemd credential, %s, or %s",
+		connectTokenCredential,
+		connectTokenFileEnvironment,
+		connectTokenEnvironment,
+	)
+}
+
+func readConnectToken(path string) (string, error) {
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("read Connect token file %q: %w", path, err)
+	}
+	token := strings.TrimSpace(string(contents))
+	if token == "" {
+		return "", fmt.Errorf("connect token file %q is empty", path)
+	}
+	return token, nil
 }
 
 // GetSecrets resolves exact 1Password secret IDs. Wildcard patterns return no

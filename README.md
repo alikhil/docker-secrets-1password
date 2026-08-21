@@ -2,6 +2,8 @@
 
 Resolve Docker Secrets Engine references from a self-hosted [1Password Connect](https://www.1password.dev/connect/get-started) server. Configuration contains only `se://` references; the provider fetches the secret value from Connect when Docker starts the workload.
 
+Docker is tracking built-in 1Password backend support in [docker/secrets-engine#534](https://github.com/docker/secrets-engine/issues/534), but that integration is still in progress. This independent plugin fills the gap for self-hosted 1Password Connect servers today.
+
 ## What it does
 
 The provider owns the `op/**` Secrets Engine realm and resolves exact references in this form:
@@ -51,7 +53,7 @@ go install github.com/alikhil/docker-secrets-1password/cmd/docker-secrets-1passw
 
 ## Run as a system service
 
-The provider must run for the same Linux user that runs Docker Secrets Engine. The recommended setup is a system service which decrypts the Connect token, then runs the provider as that user. This avoids a plaintext token in a user environment file while allowing the user-scoped Secrets Engine to register the plugin.
+The provider must run for the same Linux user that runs Docker Secrets Engine. The recommended setup is a system service which decrypts the Connect token, then runs the provider as that user. The binary reads the `op-connect-token` systemd credential directly, so the token never needs to be exported into the process environment.
 
 The steps below assume:
 
@@ -92,7 +94,7 @@ Environment=HOME=/home/alice
 Environment=XDG_RUNTIME_DIR=/run/user/1000
 Environment=OP_CONNECT_HOST=http://127.0.0.1:18080
 LoadCredentialEncrypted=op-connect-token:/etc/docker-secrets-1password/op-connect-token.cred
-ExecStart=/bin/sh -ec 'export OP_CONNECT_TOKEN="$(cat "$CREDENTIALS_DIRECTORY/op-connect-token")"; exec /usr/bin/docker-secrets-1password'
+ExecStart=/usr/bin/docker-secrets-1password
 Restart=on-failure
 RestartSec=5
 
@@ -112,15 +114,15 @@ docker pass plugins ls
 
 The plugin list should show `docker-secrets-1password`, version `v…`, realm `op/**`, and status `running`. For diagnostics, inspect `sudo journalctl -u docker-secrets-1password.service` but do not use commands that print the service environment or decrypted credential.
 
-`LoadCredentialEncrypted=` needs a system service: a user manager commonly cannot access the host credential key needed to decrypt a credential created for the system. The credential is decrypted into systemd's per-service credential directory; it is not stored in the unit or passed as a command-line argument.
+`LoadCredentialEncrypted=` needs a system service: a user manager commonly cannot access the host credential key needed to decrypt a credential created for the system. The credential is decrypted into systemd's per-service credential directory. The provider automatically reads `$CREDENTIALS_DIRECTORY/op-connect-token`; the value is not stored in the unit, exported into the environment, or passed as a command-line argument.
 
 ### Development-only foreground run
 
-For a temporary local test only, the official Connect SDK reads these variables:
+Outside systemd, point the provider at a token file:
 
 ```sh
 export OP_CONNECT_HOST="https://connect.example.internal"
-export OP_CONNECT_TOKEN="replace-with-a-vault-scoped-connect-token"
+export OP_CONNECT_TOKEN_FILE="$HOME/.config/docker-secrets-1password/op-connect-token"
 ```
 
 Start the provider in the same user session as Docker Secrets Engine:
@@ -129,7 +131,7 @@ Start the provider in the same user session as Docker Secrets Engine:
 docker-secrets-1password
 ```
 
-Do not use this approach for a persistent host service: shell history and process environments are too easy to expose. Use the encrypted-credential system service above instead.
+`OP_CONNECT_TOKEN_FILE` takes precedence over the automatic systemd credential lookup. `OP_CONNECT_TOKEN` remains available as a development-only fallback, but persistent services should use the encrypted systemd credential above.
 
 The provider registers with the Secrets Engine when it starts and exits when Docker shuts it down. Its release version is logged at startup.
 
