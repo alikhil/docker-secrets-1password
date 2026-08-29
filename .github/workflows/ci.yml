@@ -23,6 +23,13 @@ jobs:
       - run: go test ./...
       - run: go vet ./...
       - run: go build ./cmd/docker-secrets-1password
+      - name: Test installer
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+          bash -n scripts/install.sh scripts/install_test.sh
+          shellcheck scripts/install.sh scripts/install_test.sh
+          bash scripts/install_test.sh
 
   lint:
     name: Lint

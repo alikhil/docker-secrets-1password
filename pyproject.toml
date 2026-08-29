@@ -12,6 +12,7 @@ tag_format = "v$version"
 version_provider = "pep621"
 version_files = [
   "cmd/docker-secrets-1password/main.go:version = \\\"v",
+  "docs/manual-installation.md:VERSION=",
 ]
 update_changelog_on_bump = true
 major_version_zero = true

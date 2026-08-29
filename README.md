@@ -21,102 +21,46 @@ Wildcards are intentionally not expanded. Enumerating all accessible vaults or i
 ## Prerequisites
 
 - [Docker Engine (CE) 29.2.0 or later](https://docs.docker.com/reference/cli/docker/pass/#installation). Docker Secrets Engine's standalone packages require this minimum Engine version.
+- Ubuntu 24.04 or later, or Debian 12 or later, with systemd 250+. Ubuntu 22.04 is intentionally unsupported because its systemd 249 release does not provide `systemd-creds` or encrypted service credentials.
 - Docker Secrets Engine installed and running for the user who will run this plugin.
-- A 1Password Connect server and a Connect API token scoped only to the vaults this plugin needs.
+- A [1Password Connect server](https://www.1password.dev/connect/get-started#1password-cli) already installed, running, and reachable from the host where this provider runs.
+- A Connect API token scoped only to the vaults this plugin needs.
 - Access to those vaults; 1Password Connect cannot access built-in Personal, Private, Employee, or default Shared vaults.
+
+Docker Secrets Engine support on Docker CE is currently experimental and may change between releases. Review Docker's [known limitations and current guidance](https://github.com/docker/secrets-engine#docker-ce-experimental) before relying on it for a production workload.
 
 ## Install on Debian or Ubuntu
 
-Install Docker Secrets Engine and its plugin package from Docker’s official repository if they are not already installed:
+### Interactive installer
+
+Download and inspect the installer, then run it as the non-root user whose containers will use Docker Secrets Engine:
 
 ```sh
-sudo apt-get update
-sudo apt-get install docker-secrets-engine docker-secrets-engine-plugins
-systemctl --user daemon-reload
-systemctl --user enable --now docker-secrets-engine.service
+curl -fLO https://raw.githubusercontent.com/alikhil/docker-secrets-1password/main/scripts/install.sh
+less install.sh
+chmod +x install.sh
+./install.sh
 ```
 
-Download the `.deb` matching a published release and your architecture (`amd64` or `arm64`), then install it with APT:
+For a fresh installation, the installer first confirms that a [1Password Connect server is installed](https://www.1password.dev/connect/get-started#1password-cli), running, and reachable from the host. On a rerun, it detects the existing provider and service first, reuses the configured Connect URL, and verifies that URL instead of repeating the prerequisite question. It then checks the operating system, architecture, systemd credential support, Docker access, and the Docker Engine version before changing the host. It can configure Docker's official APT repository, install Docker CE when absent, install Docker Secrets Engine and this provider from published packages, verify the provider package checksum, encrypt the Connect token, create the systemd service, enable lingering, and confirm that the plugin registered successfully. Existing encrypted credentials are preserved unless you explicitly choose to replace them.
+
+If you need a Connect API token, create one before the credential step. Limit it to only the vaults the provider needs:
 
 ```sh
-VERSION=0.1.1
-ARCH="$(dpkg --print-architecture)"
-curl -fLO "https://github.com/alikhil/docker-secrets-1password/releases/download/v${VERSION}/docker-secrets-1password_${VERSION}_${ARCH}.deb"
-sudo apt install "./docker-secrets-1password_${VERSION}_${ARCH}.deb"
+op connect token create <tokenName> --server <serverName|serverID> --vault <vaultName|vaultID>
 ```
 
-The package installs `docker-secrets-1password` in `/usr/bin`. Releases also include tarballs for Linux and macOS. To build from source instead, install Go 1.25.13 or later and run:
+Successful command output is suppressed so package-manager logs do not overwhelm the interactive prompts. If a command fails, the installer prints its last 15 output lines in a visually subdued style when the terminal supports it.
 
-```sh
-go install github.com/alikhil/docker-secrets-1password/cmd/docker-secrets-1password@latest
-```
+Rerun the same script to upgrade an existing installation. It detects the installed provider version, defaults to the latest published release, upgrades the package when needed, preserves the encrypted Connect credential unless you choose to replace it, refreshes the systemd unit, and restarts and verifies the services. If the selected provider version is already installed, the download is skipped and the service configuration is refreshed. Downgrades require explicit confirmation.
 
-## Run as a system service
+The installer supports Ubuntu 24.04+ and Debian 12+ on `amd64` and `arm64`, and requires systemd 250 or later. It does not support Ubuntu 22.04 and will stop during prerequisite checks without changing the service configuration. Run it directly rather than piping it into a shell: it is interactive and asks you to review the selected user, provider version, Connect URL, and credential location before installation.
 
-The provider must run for the same Linux user that runs Docker Secrets Engine. The recommended setup is a system service which decrypts the Connect token, then runs the provider as that user. The binary reads the `op-connect-token` systemd credential directly, so the token never needs to be exported into the process environment.
+### Manual installation
 
-The steps below assume:
+See [Manual installation](docs/manual-installation.md) for package installation, encrypted credential creation, and complete systemd service configuration.
 
-- Docker Secrets Engine is used by `alice` (replace it with your user name).
-- 1Password Connect listens on `http://127.0.0.1:18080`. Use the internal Connect URL appropriate to your host; do not unnecessarily route a host-side provider through a public proxy.
-- The Debian package was installed, so the provider binary is `/usr/bin/docker-secrets-1password`. For a tarball installation, use that binary's absolute path instead.
-
-Enable the user service and lingering so Docker Secrets Engine survives logout and reboots:
-
-```sh
-systemctl --user enable --now docker-secrets-engine.service
-sudo loginctl enable-linger alice
-```
-
-Create an encrypted systemd credential. The command prompts for the Connect API token without placing it in a shell variable or on the command line:
-
-```sh
-sudo install -d -m 0700 /etc/docker-secrets-1password
-systemd-ask-password "1Password Connect API token" \
-  | sudo systemd-creds encrypt --name=op-connect-token - \
-    /etc/docker-secrets-1password/op-connect-token.cred
-sudo chmod 0600 /etc/docker-secrets-1password/op-connect-token.cred
-```
-
-Create `/etc/systemd/system/docker-secrets-1password.service`. Replace `alice`, `/home/alice`, and `1000` with the intended user's name, home directory, and numeric UID (`id -u alice`).
-
-```ini
-[Unit]
-Description=1Password Connect provider for Docker Secrets Engine
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=simple
-User=alice
-Group=alice
-Environment=HOME=/home/alice
-Environment=XDG_RUNTIME_DIR=/run/user/1000
-Environment=OP_CONNECT_HOST=http://127.0.0.1:18080
-LoadCredentialEncrypted=op-connect-token:/etc/docker-secrets-1password/op-connect-token.cred
-ExecStart=/usr/bin/docker-secrets-1password
-Restart=on-failure
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-```
-
-Enable it and verify registration without displaying the token:
-
-```sh
-sudo systemctl daemon-reload
-sudo systemctl enable --now docker-secrets-1password.service
-systemctl --user is-active docker-secrets-engine.service
-sudo systemctl is-active docker-secrets-1password.service
-docker pass plugins ls
-```
-
-The plugin list should show `docker-secrets-1password`, version `v…`, realm `op/**`, and status `running`. For diagnostics, inspect `sudo journalctl -u docker-secrets-1password.service` but do not use commands that print the service environment or decrypted credential.
-
-`LoadCredentialEncrypted=` needs a system service: a user manager commonly cannot access the host credential key needed to decrypt a credential created for the system. The credential is decrypted into systemd's per-service credential directory. The provider automatically reads `$CREDENTIALS_DIRECTORY/op-connect-token`; the value is not stored in the unit, exported into the environment, or passed as a command-line argument.
-
-### Development-only foreground run
+## Development-only foreground run
 
 Outside systemd, point the provider at a token file:
 
