@@ -52,13 +52,23 @@ op connect token create <tokenName> --server <serverName|serverID> --vault <vaul
 
 Successful command output is suppressed so package-manager logs do not overwhelm the interactive prompts. If a command fails, the installer prints its last 15 output lines in a visually subdued style when the terminal supports it.
 
-Rerun the same script to upgrade an existing installation. It detects the installed provider version, defaults to the latest published release, upgrades the package when needed, preserves the encrypted Connect credential unless you choose to replace it, refreshes the systemd unit, and restarts and verifies the services. If the selected provider version is already installed, the download is skipped and the service configuration is refreshed. Downgrades require explicit confirmation.
-
 The installer supports Ubuntu 24.04+ and Debian 12+ on `amd64` and `arm64`, and requires systemd 250 or later. It does not support Ubuntu 22.04 and will stop during prerequisite checks without changing the service configuration. Run it directly rather than piping it into a shell: it is interactive and asks you to review the selected user, provider version, Connect URL, and credential location before installation.
 
 ### Manual installation
 
 See [Manual installation](docs/manual-installation.md) for package installation, encrypted credential creation, and complete systemd service configuration.
+
+## Upgrade
+
+Reuse the interactive installation script to upgrade an existing installation. Download the current script and run it as the same non-root user that owns the Docker Secrets Engine service:
+
+```sh
+curl -fLO https://raw.githubusercontent.com/alikhil/docker-secrets-1password/main/scripts/install.sh
+chmod +x install.sh
+./install.sh
+```
+
+The installer detects the installed provider version, defaults to the latest published release, and upgrades the package when needed. It preserves the encrypted Connect credential unless you choose to replace it, refreshes the systemd unit, restarts the services, and verifies provider registration. If the selected version is already installed, the package download is skipped and only the service configuration is refreshed. Downgrades require explicit confirmation.
 
 ## Development-only foreground run
 
