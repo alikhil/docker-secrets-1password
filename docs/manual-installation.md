@@ -18,7 +18,7 @@ systemctl --user enable --now docker-secrets-engine.service
 Download the `.deb` matching a published release and your architecture (`amd64` or `arm64`), then install it with APT:
 
 ```sh
-VERSION=0.2.0
+VERSION=0.3.0
 ARCH="$(dpkg --print-architecture)"
 curl -fLO "https://github.com/alikhil/docker-secrets-1password/releases/download/v${VERSION}/docker-secrets-1password_${VERSION}_${ARCH}.deb"
 sudo apt install "./docker-secrets-1password_${VERSION}_${ARCH}.deb"

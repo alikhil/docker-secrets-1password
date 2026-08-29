@@ -1,3 +1,9 @@
+## v0.3.0 (2026-08-29)
+
+### Feat
+
+- add interactive installer
+
 ## v0.2.0 (2026-08-21)
 
 ### Feat
