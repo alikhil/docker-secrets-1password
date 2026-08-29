@@ -10,7 +10,7 @@ import (
 	"github.com/docker/secrets-engine/plugin"
 )
 
-var version = "v0.3.0"
+var version = "v0.3.1"
 
 type logger struct{}
 
