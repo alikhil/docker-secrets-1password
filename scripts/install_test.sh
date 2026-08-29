@@ -78,7 +78,7 @@ if systemd_version_is_supported "invalid"; then
 fi
 
 missing_unit_dir="$(mktemp -d)"
-use_existing_credential_path "${missing_unit_dir}/missing.service" \
+use_existing_credential_path_from "${missing_unit_dir}/missing.service" \
   || fail "a missing existing unit must not terminate a fresh installation"
 rm -rf -- "${missing_unit_dir}"
 

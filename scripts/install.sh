@@ -576,7 +576,11 @@ existing_connect_host() {
 }
 
 use_existing_credential_path() {
-  local service_file="${1:-${SERVICE_FILE}}"
+  use_existing_credential_path_from "${SERVICE_FILE}"
+}
+
+use_existing_credential_path_from() {
+  local service_file="$1"
   local line=""
   local path=""
 
