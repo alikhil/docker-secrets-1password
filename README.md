@@ -1,8 +1,25 @@
 # Docker Secrets Engine provider for 1Password Connect
 
-Resolve Docker Secrets Engine references from a self-hosted [1Password Connect](https://www.1password.dev/connect/get-started) server. Configuration contains only `se://` references; the provider fetches the secret value from Connect when Docker starts the workload.
+Resolve Docker Secrets Engine references from a self-hosted [1Password Connect](https://www.1password.dev/connect/get-started) server.
 
-Docker is tracking built-in 1Password backend support in [docker/secrets-engine#534](https://github.com/docker/secrets-engine/issues/534), but that integration is still in progress. This independent plugin fills the gap for self-hosted 1Password Connect servers today.
+## Use references
+
+### Docker Compose
+
+```yaml
+services:
+  app:
+    image: example/app
+    environment:
+      API_TOKEN: se://op/homelab/api-token/credential # Puts item named `api-token` with a `credential` field from `homelab` vault
+```
+
+### Plain docker run
+
+```bash
+docker run --rm -e username=se://op/my-vault/foobar/username busybox sh -c 'echo "hello $username"'
+# Will print item named `foobar` with a `username` field from `my-vault` vault
+```
 
 ## What it does
 
@@ -88,20 +105,6 @@ docker-secrets-1password
 `OP_CONNECT_TOKEN_FILE` takes precedence over the automatic systemd credential lookup. `OP_CONNECT_TOKEN` remains available as a development-only fallback, but persistent services should use the encrypted systemd credential above.
 
 The provider registers with the Secrets Engine when it starts and exits when Docker shuts it down. Its release version is logged at startup.
-
-## Use references
-
-For a `production` vault item named `api-token` with a `credential` field:
-
-```yaml
-services:
-  app:
-    image: example/app
-    environment:
-      API_TOKEN: se://op/production/api-token/credential
-```
-
-An item title or field label containing `/` cannot be represented in this reference format; use the corresponding 1Password UUID instead. An empty field is treated as missing to prevent silently injecting an unintended empty value.
 
 ## Development and releases
 
