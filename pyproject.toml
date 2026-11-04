@@ -3,7 +3,7 @@ name = "docker-secrets-1password"
 version = "0.3.1"
 requires-python = ">=3.10"
 dependencies = [
-  "commitizen>=4.0,<5.0",
+  "commitizen>=4.19.3,<5.0",
 ]
 
 [tool.commitizen]
